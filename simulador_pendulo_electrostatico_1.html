@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador — Péndulo Electrostático</title>
+<style>
+  :root{
+    --bg-deep:#0E141B;
+    --bg-panel:#161F29;
+    --bg-panel2:#1C2733;
+    --grid:#2A3742;
+    --amber:#E8A33D;
+    --amber-dim:#8A6326;
+    --cyan:#57D9CB;
+    --cyan-dim:#2E6E68;
+    --red:#D9534F;
+    --text:#ECE8DE;
+    --text-muted:#8A97A6;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+    --sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; background:var(--bg-deep); color:var(--text);
+    font-family:var(--sans);
+  }
+  .wrap{
+    max-width:1180px; margin:0 auto; padding:22px 18px 40px;
+  }
+  header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom:1px solid var(--grid); padding-bottom:14px; margin-bottom:18px;
+    flex-wrap:wrap; gap:8px;
+  }
+  header h1{
+    font-size:15px; letter-spacing:.14em; text-transform:uppercase; font-weight:700;
+    margin:0; color:var(--text);
+  }
+  header .sub{
+    font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted);
+  }
+  .grid{
+    display:grid; grid-template-columns: 1.15fr 1fr; gap:18px;
+  }
+  @media (max-width:860px){ .grid{ grid-template-columns:1fr; } }
+
+  .panel{
+    background:var(--bg-panel); border:1px solid var(--grid); border-radius:6px;
+    padding:16px;
+  }
+  .panel + .panel{ margin-top:16px; }
+  .panel h2{
+    font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--cyan);
+    margin:0 0 12px; font-weight:700;
+  }
+
+  /* ---------- Escenario SVG ---------- */
+  .stage-wrap{ position:relative; }
+  svg#stage{ width:100%; height:auto; display:block; }
+  .field-line{ stroke:var(--cyan); stroke-width:1.4; opacity:.55; }
+  .field-arrow{ fill:var(--cyan); opacity:.85; }
+  .plate{ fill:var(--bg-panel2); stroke:var(--grid); }
+  .plate.pos{ stroke:var(--amber); }
+  .plate.neg{ stroke:var(--cyan); }
+  .thread{ stroke:#7C8894; stroke-width:1.6; }
+  .vertical-ref{ stroke:#3A4652; stroke-width:1; stroke-dasharray:3 4; }
+  .bob{ fill:var(--amber); stroke:#3a2a0e; stroke-width:1; }
+  .bob.off{ fill:#5b6672; }
+  .arc{ fill:none; stroke:var(--text-muted); stroke-width:1; }
+  .force-vec{ stroke-width:2; fill:none; marker-end:url(#arrowhead); }
+  .label-svg{ font-family:var(--mono); font-size:11px; fill:var(--text-muted); }
+  .label-svg.strong{ fill:var(--text); font-weight:600; }
+
+  .warn-banner{
+    display:none; margin-top:10px; padding:8px 10px; border:1px solid var(--red);
+    background:rgba(217,83,79,.12); color:#f2b3b1; font-size:11.5px; border-radius:4px;
+    font-family:var(--mono);
+  }
+  .warn-banner.show{ display:block; }
+
+  /* ---------- Gauge ---------- */
+  .gauge-row{ display:flex; align-items:center; gap:18px; margin-top:14px; }
+  svg#gauge{ width:190px; height:120px; flex:0 0 auto; }
+  .gauge-readout{ font-family:var(--mono); }
+  .gauge-readout .big{ font-size:28px; font-weight:600; color:var(--amber); line-height:1; }
+  .gauge-readout .small{ font-size:11px; color:var(--text-muted); letter-spacing:.06em; text-transform:uppercase; margin-top:4px;}
+  .gauge-readout .eq{ font-size:12px; color:var(--cyan); margin-top:6px; }
+
+  /* ---------- Controles ---------- */
+  .ctrl{ margin-bottom:14px; }
+  .ctrl label{
+    display:flex; justify-content:space-between; font-size:11px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--text-muted); margin-bottom:5px;
+  }
+  .ctrl label span.val{ font-family:var(--mono); color:var(--text); text-transform:none; letter-spacing:0; font-size:12.5px;}
+  input[type=range]{
+    -webkit-appearance:none; width:100%; height:4px; border-radius:2px;
+    background:var(--grid); outline:none; margin:0;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:15px; height:15px; border-radius:50%;
+    background:var(--amber); cursor:pointer; border:2px solid #0E141B;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:15px; height:15px; border-radius:50%; background:var(--amber); border:2px solid #0E141B; cursor:pointer;
+  }
+
+  .toggles{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  button{
+    font-family:var(--sans); font-size:11.5px; letter-spacing:.04em; text-transform:uppercase;
+    font-weight:600; padding:9px 13px; border-radius:4px; cursor:pointer;
+    border:1px solid var(--grid); background:var(--bg-panel2); color:var(--text);
+    transition:background .15s, border-color .15s;
+  }
+  button:hover{ border-color:var(--amber); }
+  button.active{ background:var(--amber); color:#1a1204; border-color:var(--amber); }
+  button.ghost{ background:transparent; }
+
+  /* ---------- Lecturas ---------- */
+  .readouts{
+    display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; font-family:var(--mono); font-size:12.5px;
+  }
+  .readouts .item{ display:flex; justify-content:space-between; border-bottom:1px dotted var(--grid); padding:3px 0;}
+  .readouts .item .k{ color:var(--text-muted); }
+  .readouts .item .v{ color:var(--text); font-weight:600; }
+  .readouts .item .v.amber{ color:var(--amber); }
+  .readouts .item .v.cyan{ color:var(--cyan); }
+
+  .section-note{ font-size:11px; color:var(--text-muted); margin-top:10px; line-height:1.5; }
+
+  canvas#chart{ width:100%; height:120px; display:block; }
+  .chart-legend{ display:flex; gap:14px; font-size:10.5px; color:var(--text-muted); margin-top:6px; font-family:var(--mono); }
+  .chart-legend .dot{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Simulador · Péndulo electrostático</h1>
+    <div class="sub">Fuerza · Trabajo · Energía — Interacciones electromecánicas</div>
+  </header>
+
+  <div class="grid">
+
+    <!-- ============ COLUMNA IZQUIERDA: VISUALIZACIÓN ============ -->
+    <div>
+      <div class="panel">
+        <h2>Montaje experimental</h2>
+        <div class="stage-wrap">
+          <svg id="stage" viewBox="0 0 420 380" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L6,3 L0,6 Z" fill="context-fill"></path>
+              </marker>
+            </defs>
+            <!-- placas -->
+            <rect id="plateNeg" class="plate neg" x="52" y="70" width="12" height="290" rx="2"></rect>
+            <rect id="platePos" class="plate pos" x="356" y="70" width="12" height="290" rx="2"></rect>
+            <text x="58" y="58" text-anchor="middle" class="label-svg strong" fill="var(--cyan)">−</text>
+            <text x="362" y="58" text-anchor="middle" class="label-svg strong" fill="var(--amber)">+ V</text>
+
+            <!-- líneas de campo -->
+            <g id="fieldLines"></g>
+
+            <!-- soporte -->
+            <line x1="180" y1="30" x2="240" y2="30" stroke="#7C8894" stroke-width="4"></line>
+            <circle cx="210" cy="30" r="3.5" fill="#7C8894"></circle>
+
+            <!-- vertical de referencia -->
+            <line x1="210" y1="30" x2="210" y2="230" class="vertical-ref"></line>
+
+            <!-- arco de ángulo -->
+            <path id="angleArc" class="arc" d=""></path>
+            <text id="angleLabel" x="222" y="70" class="label-svg strong">0.0°</text>
+
+            <!-- hilo -->
+            <line id="thread" class="thread" x1="210" y1="30" x2="210" y2="230"></line>
+
+            <!-- vectores de fuerza (opcional) -->
+            <g id="forceVecs"></g>
+
+            <!-- esfera -->
+            <circle id="bob" class="bob off" cx="210" cy="230" r="11"></circle>
+
+            <text x="210" y="368" text-anchor="middle" class="label-svg">t = <tspan id="timeLabel">0.00</tspan> s</text>
+          </svg>
+        </div>
+
+        <div id="warnBanner" class="warn-banner">
+          ⚠ Ángulo fuera del rango físico razonable: con esta combinación de parámetros el hilo perdería tensión (el modelo idealizado deja de ser válido). Reduce V o q, o aumenta m.
+        </div>
+
+        <div class="gauge-row">
+          <svg id="gauge" viewBox="0 0 190 120" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15,105 A80,80 0 0 1 175,105" fill="none" stroke="var(--grid)" stroke-width="10"></path>
+            <path id="gaugeWarnArc" d="" fill="none" stroke="var(--red)" stroke-width="10" opacity="0.55"></path>
+            <g id="gaugeTicks"></g>
+            <line id="needle" x1="95" y1="105" x2="95" y2="35" stroke="var(--amber)" stroke-width="3" stroke-linecap="round"></line>
+            <circle cx="95" cy="105" r="5" fill="var(--amber)"></circle>
+            <text x="95" y="118" text-anchor="middle" class="label-svg" font-size="9">0°           45°           90°</text>
+          </svg>
+          <div class="gauge-readout">
+            <div class="big"><span id="thetaBig">0.0</span>°</div>
+            <div class="small">Ángulo instantáneo θ(t)</div>
+            <div class="eq">θ_eq teórico ≈ <span id="thetaEqGauge">—</span>°</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Ángulo θ(t) — últimos 12 s</h2>
+        <canvas id="chart" width="600" height="140"></canvas>
+        <div class="chart-legend">
+          <span><span class="dot" style="background:var(--amber)"></span>θ(t) simulado</span>
+          <span><span class="dot" style="background:var(--cyan)"></span>θ_eq teórico</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ COLUMNA DERECHA: CONTROLES Y LECTURAS ============ -->
+    <div>
+      <div class="panel">
+        <h2>Parámetros del prototipo</h2>
+
+        <div class="ctrl">
+          <label>Voltaje aplicado V <span class="val"><span id="vVal">6000</span> V</span></label>
+          <input type="range" id="vSlider" min="0" max="9000" step="50" value="6000">
+        </div>
+        <div class="ctrl">
+          <label>Carga de la esfera q <span class="val"><span id="qVal">200</span> nC</span></label>
+          <input type="range" id="qSlider" min="50" max="300" step="5" value="200">
+        </div>
+        <div class="ctrl">
+          <label>Masa de la esfera m <span class="val"><span id="mVal">3.0</span> g</span></label>
+          <input type="range" id="mSlider" min="2" max="8" step="0.1" value="3">
+        </div>
+        <div class="ctrl">
+          <label>Longitud del hilo L <span class="val"><span id="lVal">25</span> cm</span></label>
+          <input type="range" id="lSlider" min="15" max="35" step="1" value="25">
+        </div>
+        <div class="ctrl">
+          <label>Separación entre placas d <span class="val"><span id="dVal">8</span> cm</span></label>
+          <input type="range" id="dSlider" min="6" max="12" step="0.5" value="8">
+        </div>
+
+        <div class="toggles">
+          <button id="btnField" class="active">⚡ Campo: ON</button>
+          <button id="btnFriction">Fricción: OFF</button>
+          <button id="btnForces" class="ghost">Ver fuerzas</button>
+          <button id="btnReset" class="ghost">↺ Reiniciar</button>
+          <button id="btnDefaults" class="ghost">Valores del artículo</button>
+        </div>
+
+        <div class="section-note">
+          Los valores por defecto corresponden al ejemplo desarrollado en el artículo (m = 3 g, q = 200 nC, L = 25 cm, d = 8 cm, V = 6000 V), con el que se calculó θ_eq ≈ 27.1°.
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Lecturas calculadas (Newton · Coulomb · Campo eléctrico)</h2>
+        <div class="readouts">
+          <div class="item"><span class="k">Campo eléctrico E = V/d</span><span class="v cyan" id="rE">—</span></div>
+          <div class="item"><span class="k">Fuerza eléctrica F = qE</span><span class="v cyan" id="rF">—</span></div>
+          <div class="item"><span class="k">Peso mg</span><span class="v" id="rMg">—</span></div>
+          <div class="item"><span class="k">tan θ_eq = qE/mg</span><span class="v" id="rTan">—</span></div>
+          <div class="item"><span class="k">θ_eq (equilibrio)</span><span class="v amber" id="rThetaEq">—</span></div>
+          <div class="item"><span class="k">g efectiva</span><span class="v" id="rGeff">—</span></div>
+          <div class="item"><span class="k">Período teórico (aprox.)</span><span class="v" id="rTperiod">—</span></div>
+          <div class="item"><span class="k">Período medido (simulación)</span><span class="v amber" id="rTmeasured">—</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Trabajo y energía (teorema trabajo–energía)</h2>
+        <div class="readouts">
+          <div class="item"><span class="k">W eléctrico(t) = qEL·sinθ</span><span class="v cyan" id="rWe">—</span></div>
+          <div class="item"><span class="k">W mecánico(t) = −mgL(1−cosθ)</span><span class="v" id="rWg">—</span></div>
+          <div class="item"><span class="k">K teórica = We + Wg</span><span class="v amber" id="rKth">—</span></div>
+          <div class="item"><span class="k">K real = ½m(Lθ')²</span><span class="v amber" id="rKreal">—</span></div>
+          <div class="item"><span class="k">Rapidez v(t) = Lθ'</span><span class="v" id="rV">—</span></div>
+          <div class="item"><span class="k">Energía disipada (fricción)</span><span class="v" id="rDis">—</span></div>
+        </div>
+        <div class="section-note">
+          Con fricción desactivada, K real debe coincidir con K teórica en todo instante (conservación de energía). Al activar la fricción, la diferencia entre ambas cuantifica la energía disipada por el amortiguamiento.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const g0 = 9.8;
+  const k_coulomb = 8.99e9;
+
+  // ---- Estado de simulación ----
+  let theta = 0, omega = 0, t = 0;
+  let fieldOn = true, frictionOn = false, showForces = false;
+  let running = true;
+  let lastPeakTime = null, lastPeakSign = 0, measuredPeriod = null;
+  let history = []; // {t, theta_deg}
+
+  const els = {
+    vSlider: document.getElementById('vSlider'),
+    qSlider: document.getElementById('qSlider'),
+    mSlider: document.getElementById('mSlider'),
+    lSlider: document.getElementById('lSlider'),
+    dSlider: document.getElementById('dSlider'),
+    vVal: document.getElementById('vVal'),
+    qVal: document.getElementById('qVal'),
+    mVal: document.getElementById('mVal'),
+    lVal: document.getElementById('lVal'),
+    dVal: document.getElementById('dVal'),
+    btnField: document.getElementById('btnField'),
+    btnFriction: document.getElementById('btnFriction'),
+    btnForces: document.getElementById('btnForces'),
+    btnReset: document.getElementById('btnReset'),
+    btnDefaults: document.getElementById('btnDefaults'),
+    warnBanner: document.getElementById('warnBanner'),
+    thread: document.getElementById('thread'),
+    bob: document.getElementById('bob'),
+    angleArc: document.getElementById('angleArc'),
+    angleLabel: document.getElementById('angleLabel'),
+    timeLabel: document.getElementById('timeLabel'),
+    fieldLines: document.getElementById('fieldLines'),
+    forceVecs: document.getElementById('forceVecs'),
+    needle: document.getElementById('needle'),
+    gaugeTicks: document.getElementById('gaugeTicks'),
+    gaugeWarnArc: document.getElementById('gaugeWarnArc'),
+    thetaBig: document.getElementById('thetaBig'),
+    thetaEqGauge: document.getElementById('thetaEqGauge'),
+  };
+
+  function getParams(){
+    return {
+      V: parseFloat(els.vSlider.value),
+      q: parseFloat(els.qSlider.value) * 1e-9,
+      m: parseFloat(els.mSlider.value) / 1000,
+      L: parseFloat(els.lSlider.value) / 100,
+      d: parseFloat(els.dSlider.value) / 100,
+    };
+  }
+
+  function fmt(x, dec){ return isFinite(x) ? x.toFixed(dec) : "—"; }
+
+  function updateLabels(){
+    els.vVal.textContent = els.vSlider.value;
+    els.qVal.textContent = els.qSlider.value;
+    els.mVal.textContent = parseFloat(els.mSlider.value).toFixed(1);
+    els.lVal.textContent = els.lSlider.value;
+    els.dVal.textContent = els.dSlider.value;
+  }
+
+  // ---- Dinámica: theta'' = -(g/L) sin theta + (F/(mL)) cos theta - b* omega ----
+  function derivatives(state, p, F, b){
+    const th = state.th, om = state.om;
+    const alpha = -(g0/p.L)*Math.sin(th) + (F/(p.m*p.L))*Math.cos(th) - b*om;
+    return { dth: om, dom: alpha };
+  }
+
+  function rk4Step(dt, p, F, b){
+    const s0 = { th: theta, om: omega };
+    const k1 = derivatives(s0, p, F, b);
+    const s1 = { th: s0.th + 0.5*dt*k1.dth, om: s0.om + 0.5*dt*k1.dom };
+    const k2 = derivatives(s1, p, F, b);
+    const s2 = { th: s0.th + 0.5*dt*k2.dth, om: s0.om + 0.5*dt*k2.dom };
+    const k3 = derivatives(s2, p, F, b);
+    const s3 = { th: s0.th + dt*k3.dth, om: s0.om + dt*k3.dom };
+    const k4 = derivatives(s3, p, F, b);
+
+    theta += (dt/6)*(k1.dth + 2*k2.dth + 2*k3.dth + k4.dth);
+    omega += (dt/6)*(k1.dom + 2*k2.dom + 2*k3.dom + k4.dom);
+  }
+
+  function buildFieldLines(d_cm){
+    els.fieldLines.innerHTML = "";
+    const count = Math.round(4 + (12 - d_cm) * 0.7); // más denso si d es pequeño
+    const x1 = 66, x2 = 354;
+    const yTop = 90, yBot = 350;
+    for(let i=0;i<count;i++){
+      const y = yTop + (yBot-yTop)*i/(count-1);
+      const line = document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("class","field-line");
+      line.setAttribute("x1", x2); line.setAttribute("y1", y);
+      line.setAttribute("x2", x1); line.setAttribute("y2", y);
+      line.setAttribute("marker-end","url(#arrowhead)");
+      line.style.stroke = "var(--cyan)";
+      els.fieldLines.appendChild(line);
+    }
+  }
+
+  function buildGaugeTicks(){
+    els.gaugeTicks.innerHTML = "";
+    const cx=95, cy=105, rOuter=80, rInner=68;
+    for(let deg=0; deg<=90; deg+=10){
+      const a = Math.PI - (deg/90)*Math.PI; // 0deg -> left(180°), 90deg -> right(0°)... invertimos abajo
+      const ang = Math.PI*(1 - deg/90);
+      const x1cx = cx + rInner*Math.cos(ang), y1 = cy - rInner*Math.sin(ang);
+      const x2 = cx + rOuter*Math.cos(ang), y2 = cy - rOuter*Math.sin(ang);
+      const tick = document.createElementNS("http://www.w3.org/2000/svg","line");
+      tick.setAttribute("x1",x1cx); tick.setAttribute("y1",y1);
+      tick.setAttribute("x2",x2); tick.setAttribute("y2",y2);
+      tick.setAttribute("stroke","#54606c"); tick.setAttribute("stroke-width","1.5");
+      els.gaugeTicks.appendChild(tick);
+    }
+    // arco de advertencia (>70°)
+    const a1 = Math.PI*(1-70/90), a2 = 0;
+    const rW = 80;
+    const p1x = cx+rW*Math.cos(a1), p1y = cy-rW*Math.sin(a1);
+    const p2x = cx+rW*Math.cos(a2), p2y = cy-rW*Math.sin(a2);
+    els.gaugeWarnArc.setAttribute("d", `M${p1x},${p1y} A${rW},${rW} 0 0 0 ${p2x},${p2y}`);
+  }
+
+  function setNeedle(deg){
+    const clamped = Math.max(0, Math.min(90, deg));
+    const ang = Math.PI*(1 - clamped/90);
+    const cx=95, cy=105, r=68;
+    const x2 = cx + r*Math.cos(ang), y2 = cy - r*Math.sin(ang);
+    els.needle.setAttribute("x2", x2.toFixed(1));
+    els.needle.setAttribute("y2", y2.toFixed(1));
+  }
+
+  function drawForces(F, mg, cx, cy){
+    els.forceVecs.innerHTML = "";
+    if(!showForces) return;
+    const scale = 900; // px por Newton (visual)
+    function vec(dx,dy,color,label){
+      const line = document.createElementNS("http://www.w3.org/2000/svg","line");
+      line.setAttribute("x1",cx); line.setAttribute("y1",cy);
+      line.setAttribute("x2",cx+dx); line.setAttribute("y2",cy+dy);
+      line.setAttribute("class","force-vec");
+      line.style.stroke = color;
+      line.style.markerEnd = "url(#arrowhead)";
+      line.setAttribute("marker-end","url(#arrowhead)");
+      line.style.setProperty("--marker-color", color);
+      els.forceVecs.appendChild(line);
+      const txt = document.createElementNS("http://www.w3.org/2000/svg","text");
+      txt.setAttribute("x", cx+dx+4); txt.setAttribute("y", cy+dy);
+      txt.setAttribute("class","label-svg strong"); txt.style.fill = color;
+      txt.textContent = label;
+      els.forceVecs.appendChild(txt);
+    }
+    vec(0, mg*scale, "#c9c9c9", "mg");
+    if(fieldOn) vec(F*scale, 0, "var(--amber)", "qE");
+  }
+
+  // ---- Gráfico θ(t) ----
+  const chartCanvas = document.getElementById('chart');
+  const ctx = chartCanvas.getContext('2d');
+  function resizeCanvas(){
+    const ratio = window.devicePixelRatio || 1;
+    const w = chartCanvas.clientWidth, h = chartCanvas.clientHeight;
+    chartCanvas.width = w*ratio; chartCanvas.height = h*ratio;
+    ctx.setTransform(ratio,0,0,ratio,0,0);
+  }
+  window.addEventListener('resize', resizeCanvas);
+
+  function drawChart(thetaEqDeg){
+    const w = chartCanvas.clientWidth, h = chartCanvas.clientHeight;
+    ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle = "#2A3742"; ctx.lineWidth=1;
+    for(let i=0;i<=4;i++){
+      const y = h - (i/4)*h;
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+    }
+    const tMax = 12;
+    const tNow = t;
+    const tMin = Math.max(0, tNow - tMax);
+    const maxDeg = 95;
+
+    // línea theta_eq
+    if(isFinite(thetaEqDeg)){
+      const y = h - (thetaEqDeg/maxDeg)*h;
+      ctx.strokeStyle = "#57D9CB"; ctx.setLineDash([4,3]); ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    ctx.strokeStyle = "#E8A33D"; ctx.lineWidth=1.8;
+    ctx.beginPath();
+    let started = false;
+    for(const pt of history){
+      if(pt.t < tMin) continue;
+      const x = ((pt.t - tMin)/tMax)*w;
+      const y = h - (Math.min(pt.deg,maxDeg)/maxDeg)*h;
+      if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  // ---- Bucle principal ----
+  let prevTime = null;
+  function frame(now){
+    if(prevTime===null) prevTime = now;
+    let dt = (now - prevTime)/1000;
+    prevTime = now;
+    dt = Math.min(dt, 0.05);
+
+    if(running){
+      const p = getParams();
+      const E = p.V / p.d;
+      const F = fieldOn ? p.q * E : 0;
+      const b = frictionOn ? 1.6 : 0;
+
+      const sub = 4;
+      for(let i=0;i<sub;i++){
+        rk4Step(dt/sub, p, F, b);
+      }
+      t += dt;
+
+      // detección de picos para período medido
+      if(lastPeakSign !== 0 && Math.sign(omega) !== lastPeakSign && Math.sign(omega)!==0){
+        if(lastPeakSign > 0){ // era creciente, ahora decrece -> máximo
+          if(lastPeakTime !== null){
+            measuredPeriod = t - lastPeakTime;
+          }
+          lastPeakTime = t;
+        }
+      }
+      if(Math.sign(omega)!==0) lastPeakSign = Math.sign(omega);
+
+      history.push({t: t, deg: theta*180/Math.PI});
+      if(history.length > 2000) history.shift();
+
+      render(p, E, F);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function render(p, E, F){
+    const mg = p.m * g0;
+    const thetaDeg = theta*180/Math.PI;
+    const tanEq = F/mg;
+    const thetaEq = Math.atan(tanEq);
+    const thetaEqDeg = thetaEq*180/Math.PI;
+    const gEff = Math.sqrt(g0*g0 + (F/p.m)*(F/p.m));
+    const Tperiod = 2*Math.PI*Math.sqrt(p.L/gEff);
+
+    const We = F*p.L*Math.sin(theta);
+    const Wg = -p.m*g0*p.L*(1-Math.cos(theta));
+    const Kth = We + Wg;
+    const Kreal = 0.5*p.m*Math.pow(p.L*omega,2);
+    const v = p.L*omega;
+    const dissip = Math.max(0, Kth - Kreal);
+
+    // ---- Escenario SVG ----
+    const cx=210, cy=30;
+    const Lpix = 200;
+    const bx = cx + Lpix*Math.sin(theta);
+    const by = cy + Lpix*Math.cos(theta);
+    els.thread.setAttribute("x2", bx.toFixed(1));
+    els.thread.setAttribute("y2", by.toFixed(1));
+    els.bob.setAttribute("cx", bx.toFixed(1));
+    els.bob.setAttribute("cy", by.toFixed(1));
+    els.bob.setAttribute("class", "bob" + (fieldOn && F>0 ? "" : " off"));
+
+    // arco de ángulo
+    const rArc = 40;
+    const ax = cx + rArc*Math.sin(theta*0.999);
+    const ay = cy + rArc*Math.cos(theta*0.999);
+    const largeArc = theta*180/Math.PI > 180 ? 1 : 0;
+    els.angleArc.setAttribute("d", `M${cx},${cy+rArc} A${rArc},${rArc} 0 ${largeArc} 1 ${ax.toFixed(1)},${ay.toFixed(1)}`);
+    els.angleLabel.setAttribute("x", (cx+rArc*0.75).toFixed(1));
+    els.angleLabel.setAttribute("y", (cy+rArc*0.95).toFixed(1));
+    els.angleLabel.textContent = thetaDeg.toFixed(1)+"°";
+    els.timeLabel.textContent = t.toFixed(2);
+
+    drawForces(F, mg, bx, by);
+
+    // advertencia física (theta o 2*thetaEq > ~100 grados)
+    const maxExcursion = 2*thetaEqDeg;
+    const warn = maxExcursion > 100 || thetaDeg > 95;
+    els.warnBanner.classList.toggle("show", warn);
+
+    // gauge
+    setNeedle(Math.abs(thetaDeg));
+    els.thetaBig.textContent = thetaDeg.toFixed(1);
+    els.thetaEqGauge.textContent = isFinite(thetaEqDeg) ? thetaEqDeg.toFixed(1) : "—";
+
+    // lecturas numéricas
+    document.getElementById('rE').textContent = fmt(E,0) + " N/C";
+    document.getElementById('rF').textContent = fmt(F*1000,2) + " mN";
+    document.getElementById('rMg').textContent = fmt(mg*1000,2) + " mN";
+    document.getElementById('rTan').textContent = fmt(tanEq,3);
+    document.getElementById('rThetaEq').textContent = fmt(thetaEqDeg,1) + "°";
+    document.getElementById('rGeff').textContent = fmt(gEff,2) + " m/s²";
+    document.getElementById('rTperiod').textContent = fmt(Tperiod,3) + " s";
+    document.getElementById('rTmeasured').textContent = measuredPeriod ? fmt(measuredPeriod,3)+" s" : "midiendo…";
+
+    document.getElementById('rWe').textContent = fmt(We*1000,3) + " mJ";
+    document.getElementById('rWg').textContent = fmt(Wg*1000,3) + " mJ";
+    document.getElementById('rKth').textContent = fmt(Kth*1000,3) + " mJ";
+    document.getElementById('rKreal').textContent = fmt(Kreal*1000,3) + " mJ";
+    document.getElementById('rV').textContent = fmt(Math.abs(v),3) + " m/s";
+    document.getElementById('rDis').textContent = fmt(dissip*1000,3) + " mJ";
+
+    drawChart(thetaEqDeg);
+  }
+
+  // ---- Eventos de UI ----
+  [els.vSlider, els.qSlider, els.mSlider, els.lSlider, els.dSlider].forEach(s=>{
+    s.addEventListener('input', ()=>{
+      updateLabels();
+      buildFieldLines(parseFloat(els.dSlider.value));
+    });
+  });
+
+  els.btnField.addEventListener('click', ()=>{
+    fieldOn = !fieldOn;
+    els.btnField.textContent = "⚡ Campo: " + (fieldOn ? "ON" : "OFF");
+    els.btnField.classList.toggle('active', fieldOn);
+  });
+  els.btnFriction.addEventListener('click', ()=>{
+    frictionOn = !frictionOn;
+    els.btnFriction.textContent = "Fricción: " + (frictionOn ? "ON" : "OFF");
+    els.btnFriction.classList.toggle('active', frictionOn);
+  });
+  els.btnForces.addEventListener('click', ()=>{
+    showForces = !showForces;
+    els.btnForces.classList.toggle('active', showForces);
+  });
+  els.btnReset.addEventListener('click', ()=>{
+    theta = 0; omega = 0; t = 0;
+    lastPeakTime = null; lastPeakSign = 0; measuredPeriod = null;
+    history = [];
+  });
+  els.btnDefaults.addEventListener('click', ()=>{
+    els.vSlider.value = 6000; els.qSlider.value = 200; els.mSlider.value = 3;
+    els.lSlider.value = 25; els.dSlider.value = 8;
+    updateLabels();
+    buildFieldLines(8);
+    theta=0; omega=0; t=0; lastPeakTime=null; lastPeakSign=0; measuredPeriod=null; history=[];
+  });
+
+  // ---- Inicialización ----
+  updateLabels();
+  buildFieldLines(8);
+  buildGaugeTicks();
+  resizeCanvas();
+  requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
